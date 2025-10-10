@@ -1,0 +1,154 @@
+﻿<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Quiz - Apresentador</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+:root{--bg:#0f1720;--card:#0b1220;--accent:#0ea5ff;--text:#e6eef8}
+body{font-family:Inter,Arial,Helvetica,sans-serif;background:#071126;color:var(--text);margin:0;padding:18px;display:flex;flex-direction:column;gap:16px}
+.card{background:rgba(255,255,255,0.03);padding:12px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,0.4)}
+.hidden{display:none}
+h2,h3{margin:0 0 12px 0}
+#qrcode{width:250px;height:250px;margin:auto;display:block}
+.center{text-align:center}
+button{background:var(--accent);color:#012;border:none;padding:12px 20px;border-radius:10px;font-weight:700;font-size:18px;cursor:pointer;margin-top:20px}
+.big-countdown{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:999}
+.big-countdown .num{font-size:clamp(60px,15vw,200px);font-weight:800;color:rgba(255,255,255,0.95);text-shadow:0 8px 40px rgba(0,0,0,0.6)}
+.status{font-size:16px;color:rgba(255,255,255,0.9);margin-top:8px}
+.progress-container{background:rgba(255,255,255,0.1);border-radius:10px;overflow:hidden;height:30px;width:100%;margin-top:20px}
+.progress-bar{height:100%;background:var(--accent);width:0;transition:width 0.3s ease}
+</style>
+</head>
+<body>
+
+<!-- TELA INICIAL EXPLICATIVA -->
+<div id="introScreen" class="card center">
+<h2>Bem-vindos ao Quiz!</h2>
+<p>Dinâmica do jogo: responda o maior número de questões corretamente.</p>
+<p>Pontos extras para respostas rápidas.</p>
+<p>Algumas questões podem ser Verdadeiro ou Falso.</p>
+<p>Acompanhe o ranking no final!</p>
+<div class="status">O apresentador controla quando mostrar o QR Code.</div>
+<button id="showQRBtn" style="margin-top:20px;font-size:16px;padding:8px 12px;">Mostrar QR Code</button>
+</div>
+
+<!-- QR CODE -->
+<div id="qrScreen" class="card hidden center">
+<h3>Escaneie o QR Code</h3>
+<div id="qrcode"></div>
+<div class="status">Participantes conectados: <span id="connected">0</span></div>
+</div>
+
+<!-- BOTÃO COMEÇAR -->
+<div id="startScreen" class="hidden center">
+<button id="startBtn">Começar</button>
+</div>
+
+<!-- CONTAGEM REGRESSIVA -->
+<div class="big-countdown hidden" id="bigCountdown">
+<div class="num" id="bigNum"></div>
+</div>
+
+<!-- TELA DE PROGRESSO -->
+<div id="progressScreen" class="card hidden">
+<h3>Progresso dos participantes</h3>
+<div class="progress-container">
+<div class="progress-bar" id="progressBar"></div>
+</div>
+<div class="status" id="progressText">0 / 0 participantes terminaram</div>
+</div>
+
+<!-- RANKING -->
+<div id="rankingScreen" class="card hidden">
+<h3>Ranking Geral</h3>
+<ol id="rankingList"></ol>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', ()=>{
+
+const socket = io();
+socket.emit('presenter-join');
+
+const introScreen = document.getElementById('introScreen');
+const qrScreen = document.getElementById('qrScreen');
+const startScreen = document.getElementById('startScreen');
+const startBtn = document.getElementById('startBtn');
+const showQRBtn = document.getElementById('showQRBtn');
+const bigCountdown = document.getElementById('bigCountdown');
+const bigNum = document.getElementById('bigNum');
+const connectedEl = document.getElementById('connected');
+const progressScreen = document.getElementById('progressScreen');
+const progressBar = document.getElementById('progressBar');
+const progressText = document.getElementById('progressText');
+const rankingScreen = document.getElementById('rankingScreen');
+const rankingList = document.getElementById('rankingList');
+
+// Mostrar QR Code
+showQRBtn.onclick = ()=>{
+  introScreen.classList.add('hidden');
+  qrScreen.classList.remove('hidden');
+
+  const participantUrl = location.origin + '/';
+  new QRCode(document.getElementById('qrcode'), { text: participantUrl, width: 250, height: 250 });
+
+  startScreen.classList.remove('hidden');
+};
+
+// Atualiza contadores e barra de progresso
+socket.on('counts',(data)=>{
+  connectedEl.textContent = data.connected;
+  if(!progressScreen.classList.contains('hidden')){
+    const total = data.connected || 1;
+    const finished = data.finished || 0;
+    const pct = Math.min(100,(finished/total)*100);
+    progressBar.style.width = pct+'%';
+    progressText.textContent = `${finished} / ${total} participantes terminaram`;
+  }
+});
+
+// Atualiza ranking
+socket.on('updateScores',(ranking)=>{
+  rankingList.innerHTML = '';
+  ranking.forEach(p=>{
+    const li = document.createElement('li');
+    li.textContent = `${p.name} - ${p.score} pts`;
+    rankingList.appendChild(li);
+  });
+  rankingScreen.classList.remove('hidden');
+});
+
+// Começar o quiz
+startBtn.onclick = ()=>{
+  startScreen.classList.add('hidden');
+  qrScreen.classList.add('hidden');
+  runCountdown(5, ()=>{
+    bigCountdown.classList.add('hidden');
+    progressScreen.classList.remove('hidden');
+    socket.emit('presenter-start-quiz');
+  });
+};
+
+// Função de contagem regressiva
+function runCountdown(seconds, cb){
+  bigNum.textContent = seconds;
+  bigCountdown.classList.add('hidden');
+  let cur = seconds;
+  const interval = setInterval(()=>{
+    cur--;
+    bigNum.textContent = cur;
+    if(cur <= 0){
+      clearInterval(interval);
+      if(cb) cb();
+    }
+  },1000);
+}
+
+});
+</script>
+
+</body>
+</html>
