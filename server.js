@@ -52,4 +52,43 @@ io.on('connection', (socket) => {
     if (!p) return;
     if (p.answeredQuestions[questionId]) return; // já respondeu, ignora
 
-    const q = questions.find(q=>q.id===question
+    const q = questions.find(q=>q.id===questionId);
+    if (!q) return;
+
+    let pts = 0;
+    if (q.answer === selected) pts += 1;
+    if (q.answer === selected && timeTaken <=5) pts += 2;
+
+    p.score += pts;
+    p.answeredQuestions[questionId] = true; // marca como respondida
+  });
+
+  // PARTICIPANTE TERMINOU
+  socket.on('participant-finished', () => {
+    finishedCount++;
+    io.emit('counts', { connected: Object.keys(participants).length, finished: finishedCount });
+
+    // Se todos terminaram, envia ranking
+    if (finishedCount === Object.keys(participants).length) {
+      const ranking = Object.values(participants)
+        .sort((a,b)=>b.score-a.score)
+        .map(p=>({ name: p.name, score: p.score }));
+      io.emit('updateScores', ranking);
+    }
+  });
+
+  // DESCONEXÃO
+  socket.on('disconnect', () => {
+    if (participants[socket.id]) delete participants[socket.id];
+    io.emit('counts', { connected: Object.keys(participants).length, finished: finishedCount });
+  });
+
+});
+
+// ----------------- ROTAS -----------------
+app.get('/', (req,res)=>res.sendFile(__dirname + '/participant.html'));
+app.get('/presenter', (req,res)=>res.sendFile(__dirname + '/presenter.html'));
+
+// ----------------- INICIAR SERVIDOR -----------------
+const PORT = 3000;
+server.listen(PORT, ()=>console.log(`Servidor rodando em http://localhost:${PORT}`));
