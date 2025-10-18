@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -51,6 +51,7 @@ let questions = [];
 let currentIndex = 0;
 let startTime = 0;
 let score = 0;
+let selectedAnswer = null; // guarda a escolha da pergunta atual
 
 enterNameBtn.onclick = ()=>{
   const name = playerNameInput.value.trim();
@@ -77,6 +78,7 @@ function showQuestion(){
   const q = questions[currentIndex];
   questionText.textContent = q.question;
   optionsContainer.innerHTML='';
+  selectedAnswer = null; // reseta a escolha para a nova pergunta
   q.options.forEach((opt,i)=>{
     const div = document.createElement('div');
     div.textContent = opt;
@@ -89,20 +91,34 @@ function showQuestion(){
   quizScreen.classList.remove('hidden');
 }
 
-function selectAnswer(selected){
+function selectAnswer(index){
   const options = document.querySelectorAll('.option');
   options.forEach(o=>o.classList.remove('selected'));
-  options[selected].classList.add('selected');
-  const timeTaken = (Date.now()-startTime)/1000;
-  socket.emit('answer',{questionId: questions[currentIndex].id, selected, timeTaken});
-  nextBtn.classList.remove('hidden');
+  options[index].classList.add('selected');
+  selectedAnswer = index; // só guarda localmente, não envia ainda
+  nextBtn.classList.remove('hidden'); // libera botão "Próxima"
 }
 
 nextBtn.onclick = ()=>{
+  if(selectedAnswer === null){
+    alert('Escolha uma opção antes de continuar!');
+    return;
+  }
+
+  const timeTaken = (Date.now()-startTime)/1000;
+
+  // envia a resposta **uma única vez**, no clique em "Próxima"
+  socket.emit('answer',{
+    questionId: questions[currentIndex].id,
+    selected: selectedAnswer,
+    timeTaken
+  });
+
   currentIndex++;
   showQuestion();
 };
 
+// atualiza pontuação quando o servidor enviar
 socket.on('updateScore',(data)=>{
   score = data.score;
   scoreDisplay.textContent = `Pontos: ${score}`;
