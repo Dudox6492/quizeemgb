@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const app = express();
@@ -22,7 +22,7 @@ const questions = [
 ];
 
 // ----------------- ESTADOS -----------------
-let participants = {}; // { socketId: {name, score} }
+let participants = {}; // { socketId: {name, score, answeredQuestions:{questionId: true} } }
 let finishedCount = 0;
 
 // ----------------- SOCKET.IO -----------------
@@ -30,7 +30,7 @@ io.on('connection', (socket) => {
 
   // PARTICIPANTE ENTROU
   socket.on('participant-join', ({name}) => {
-    participants[socket.id] = { name, score: 0 };
+    participants[socket.id] = { name, score: 0, answeredQuestions: {} };
     io.emit('counts', { connected: Object.keys(participants).length, finished: finishedCount });
   });
 
@@ -48,29 +48,26 @@ io.on('connection', (socket) => {
   socket.on('answer', ({ questionId, selected, timeTaken }) => {
     const p = participants[socket.id];
     if (!p) return;
+    if (p.answeredQuestions[questionId]) return; // já respondeu, ignora
 
     const q = questions.find(q=>q.id===questionId);
     if (!q) return;
 
-    // 1 ponto por acerto
     let pts = 0;
     if (q.answer === selected) pts += 1;
-
-    // Bônus de velocidade: 2 pontos se responder em <=5s
     if (q.answer === selected && timeTaken <=5) pts += 2;
 
     p.score += pts;
+    p.answeredQuestions[questionId] = true; // marca como respondida
 
-    // Atualiza pontuação individual
     socket.emit('updateScore', { score: p.score });
-  });//
+  });
 
   // PARTICIPANTE TERMINOU
   socket.on('participant-finished', () => {
     finishedCount++;
     io.emit('counts', { connected: Object.keys(participants).length, finished: finishedCount });
 
-    // Se todos terminaram, envia ranking
     if (finishedCount === Object.keys(participants).length) {
       const ranking = Object.values(participants)
         .sort((a,b)=>b.score-a.score)
