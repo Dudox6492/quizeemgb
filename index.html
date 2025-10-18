@@ -24,8 +24,6 @@ button{background:var(--accent);color:#012;border:none;padding:12px 20px;border-
 <button id="enterNameBtn">Entrar</button>
 </div>
 
-<div id="scoreDisplay" class="status hidden">Pontos: 0</div>
-
 <div id="quizScreen" class="card hidden">
 <h3 id="questionText"></h3>
 <div id="optionsContainer"></div>
@@ -40,7 +38,6 @@ const socket = io();
 const nameScreen = document.getElementById('nameScreen');
 const playerNameInput = document.getElementById('playerName');
 const enterNameBtn = document.getElementById('enterNameBtn');
-const scoreDisplay = document.getElementById('scoreDisplay');
 const quizScreen = document.getElementById('quizScreen');
 const questionText = document.getElementById('questionText');
 const optionsContainer = document.getElementById('optionsContainer');
@@ -50,7 +47,6 @@ let playerName = '';
 let questions = [];
 let currentIndex = 0;
 let startTime = 0;
-let score = 0;
 let selectedAnswer = null; // guarda a escolha da pergunta atual
 
 enterNameBtn.onclick = ()=>{
@@ -59,7 +55,7 @@ enterNameBtn.onclick = ()=>{
   playerName = name;
   socket.emit('participant-join',{name: playerName});
   nameScreen.classList.add('hidden');
-  scoreDisplay.classList.remove('hidden');
+  quizScreen.classList.remove('hidden');
 };
 
 socket.on('quiz-start',(data)=>{
@@ -95,7 +91,7 @@ function selectAnswer(index){
   const options = document.querySelectorAll('.option');
   options.forEach(o=>o.classList.remove('selected'));
   options[index].classList.add('selected');
-  selectedAnswer = index; // só guarda localmente, não envia ainda
+  selectedAnswer = index; // só guarda localmente
   nextBtn.classList.remove('hidden'); // libera botão "Próxima"
 }
 
@@ -117,12 +113,6 @@ nextBtn.onclick = ()=>{
   currentIndex++;
   showQuestion();
 };
-
-// atualiza pontuação quando o servidor enviar
-socket.on('updateScore',(data)=>{
-  score = data.score;
-  scoreDisplay.textContent = `Pontos: ${score}`;
-});
 
 });
 </script>
