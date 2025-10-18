@@ -5,7 +5,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.static(__dirname)); // serve presenter.html, participant.html, socket.io.js etc.
+app.use(express.static(__dirname)); // serve htmls, socket.io.js etc.
 
 // ----------------- QUESTÕES -----------------
 const questions = [
@@ -22,7 +22,7 @@ const questions = [
 ];
 
 // ----------------- ESTADOS -----------------
-let participants = {}; // { socketId: {name, score, answeredQuestions:{questionId: true} } }
+let participants = {}; // { socketId: {name, score, answeredQuestions, times} }
 let finishedCount = 0;
 
 // ----------------- SOCKET.IO -----------------
@@ -30,7 +30,7 @@ io.on('connection', (socket) => {
 
   // PARTICIPANTE ENTROU
   socket.on('participant-join', ({name}) => {
-    participants[socket.id] = { name, score: 0, answeredQuestions: {} };
+    participants[socket.id] = { name, score: 0, answeredQuestions: {}, times: {} };
     io.emit('counts', { connected: Object.keys(participants).length, finished: finishedCount });
   });
 
@@ -41,40 +41,56 @@ io.on('connection', (socket) => {
 
   // INICIAR QUIZ
   socket.on('presenter-start-quiz', () => {
-    finishedCount = 0; // reseta contador para novo quiz
-    Object.values(participants).forEach(p => p.answeredQuestions = {}); // reseta respostas
+    finishedCount = 0;
+    Object.values(participants).forEach(p => {
+      p.answeredQuestions = {};
+      p.times = {};
+      p.score = 0;
+    });
     io.emit('quiz-start', { questions });
   });
 
   // RECEBER RESPOSTA
   socket.on('answer', ({ questionId, selected, timeTaken }) => {
     const p = participants[socket.id];
-    if (!p) return;
-    if (p.answeredQuestions[questionId]) return; // já respondeu, ignora
+    if (!p || p.answeredQuestions[questionId]) return; // só conta uma vez
 
-    const q = questions.find(q=>q.id===questionId);
+    const q = questions.find(q => q.id === questionId);
     if (!q) return;
 
-    let pts = 0;
-    if (q.answer === selected) pts += 1;
-    if (q.answer === selected && timeTaken <=5) pts += 2;
+    // 1 ponto por acerto
+    if (q.answer === selected) p.score += 1;
 
-    p.score += pts;
-    p.answeredQuestions[questionId] = true; // marca como respondida
+    // marca que respondeu esta questão e guarda o tempo
+    p.answeredQuestions[questionId] = true;
+    p.times[questionId] = timeTaken;
   });
 
   // PARTICIPANTE TERMINOU
   socket.on('participant-finished', () => {
     finishedCount++;
-    io.emit('counts', { connected: Object.keys(participants).length, finished: finishedCount });
 
-    // Se todos terminaram, envia ranking
     if (finishedCount === Object.keys(participants).length) {
+
+      // calcula tempo total de cada participante
+      let totals = Object.entries(participants).map(([id, p]) => {
+        const totalTime = Object.values(p.times).reduce((a,b)=>a+b,0);
+        return { id, totalTime };
+      });
+
+      // participante que respondeu mais rápido no total ganha +2 pontos
+      totals.sort((a,b)=>a.totalTime-b.totalTime);
+      if (totals[0]) participants[totals[0].id].score += 2;
+
+      // ranking final
       const ranking = Object.values(participants)
         .sort((a,b)=>b.score-a.score)
         .map(p=>({ name: p.name, score: p.score }));
+
       io.emit('updateScores', ranking);
     }
+
+    io.emit('counts', { connected: Object.keys(participants).length, finished: finishedCount });
   });
 
   // DESCONEXÃO
