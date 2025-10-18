@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html>
 <head>
 <meta charset="utf-8" />
@@ -126,22 +126,24 @@ startBtn.onclick = ()=>{
   startScreen.classList.add('hidden');
   qrScreen.classList.add('hidden');
   runCountdown(5, ()=>{
-    bigCountdown.classList.add('hidden');
     progressScreen.classList.remove('hidden');
     socket.emit('presenter-start-quiz');
   });
 };
 
-// Função de contagem regressiva
+// Função de contagem regressiva (corrigida)
 function runCountdown(seconds, cb){
+  bigCountdown.classList.remove('hidden'); // Mostra o contador
   bigNum.textContent = seconds;
-  bigCountdown.classList.add('hidden');
   let cur = seconds;
+
   const interval = setInterval(()=>{
     cur--;
     bigNum.textContent = cur;
+
     if(cur <= 0){
       clearInterval(interval);
+      bigCountdown.classList.add('hidden'); // Esconde quando termina
       if(cb) cb();
     }
   },1000);
