@@ -34,7 +34,7 @@ button{background:var(--accent);color:#012;border:none;padding:12px 20px;border-
 <div id="introScreen" class="card center">
 <h2>Bem-vindos ao Quiz!</h2>
 <p>Dinâmica do jogo: responda o maior número de questões corretamente.</p>
-<p>Pontos extras para respostas rápidas.
+<p>Pontos extras para respostas rápidas.</p>
 <p>Acompanhe o ranking no final!</p>
 <div class="status">O apresentador controla quando iniciar, aguarde.</div>
 <button id="showQRBtn" style="margin-top:20px;font-size:16px;padding:8px 12px;">Mostrar QR Code</button>
@@ -72,8 +72,9 @@ button{background:var(--accent);color:#012;border:none;padding:12px 20px;border-
 <ol id="rankingList"></ol>
 </div>
 
+<!-- Biblioteca QR Code local -->
+<script src="qrcode.min.js"></script>
 <script src="/socket.io/socket.io.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', ()=>{
 
@@ -94,12 +95,15 @@ const progressText = document.getElementById('progressText');
 const rankingScreen = document.getElementById('rankingScreen');
 const rankingList = document.getElementById('rankingList');
 
-// Mostrar QR Code
+// Mostrar QR Code offline
 showQRBtn.onclick = ()=>{
   introScreen.classList.add('hidden');
   qrScreen.classList.remove('hidden');
 
-  const participantUrl = location.origin + '/';
+  // Pega IP do servidor via prompt
+  const localIP = prompt("Digite o IP do servidor (ex: 192.168.43.27):");
+  const participantUrl = `http://${localIP}:3000`;
+
   new QRCode(document.getElementById('qrcode'), { text: participantUrl, width: 250, height: 250 });
 
   startScreen.classList.remove('hidden');
@@ -138,9 +142,9 @@ startBtn.onclick = ()=>{
   });
 };
 
-// Função de contagem regressiva (versão final corrigida)
+// Função de contagem regressiva
 function runCountdown(seconds, cb) {
-  bigCountdown.classList.remove('hidden'); // mostra o contador
+  bigCountdown.classList.remove('hidden');
   let cur = seconds;
   bigNum.textContent = cur;
 
@@ -152,7 +156,7 @@ function runCountdown(seconds, cb) {
       clearInterval(interval);
       bigCountdown.classList.add('hidden'); // esconde o contador
       bigNum.textContent = ''; // limpa o número
-      if (cb) cb(); // chama o callback (abre a próxima tela)
+      if (cb) cb(); // chama callback
     }
   }, 1000);
 }
