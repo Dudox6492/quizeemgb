@@ -1,11 +1,26 @@
 const express = require('express');
 const http = require('http');
+const os = require('os'); // 🔹 usado para pegar o IP local
 const { Server } = require('socket.io');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.static(__dirname)); // serve htmls, socket.io.js etc.
+// 🔹 Garante que todos os arquivos locais (HTML, JS, CSS, etc.) sejam servidos
+app.use(express.static(__dirname));
+
+// ----------------- FUNÇÃO PARA PEGAR IP LOCAL -----------------
+function getLocalIP() {
+  const nets = os.networkInterfaces();
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if (net.family === 'IPv4' && !net.internal) {
+        return net.address;
+      }
+    }
+  }
+  return 'localhost';
+}
 
 // ----------------- QUESTÕES -----------------
 const questions = [
@@ -27,9 +42,8 @@ let finishedCount = 0;
 
 // ----------------- SOCKET.IO -----------------
 io.on('connection', (socket) => {
-
   // PARTICIPANTE ENTROU
-  socket.on('participant-join', ({name}) => {
+  socket.on('participant-join', ({ name }) => {
     participants[socket.id] = { name, score: 0, answeredQuestions: {}, times: {} };
     io.emit('counts', { connected: Object.keys(participants).length, finished: finishedCount });
   });
@@ -42,26 +56,22 @@ io.on('connection', (socket) => {
   // INICIAR QUIZ
   socket.on('presenter-start-quiz', () => {
     finishedCount = 0;
-    Object.values(participants).forEach(p => {
+    for (const p of Object.values(participants)) {
+      p.score = 0;
       p.answeredQuestions = {};
       p.times = {};
-      p.score = 0;
-    });
+    }
     io.emit('quiz-start', { questions });
   });
 
   // RECEBER RESPOSTA
   socket.on('answer', ({ questionId, selected, timeTaken }) => {
     const p = participants[socket.id];
-    if (!p || p.answeredQuestions[questionId]) return; // só conta uma vez
-
+    if (!p || p.answeredQuestions[questionId]) return;
     const q = questions.find(q => q.id === questionId);
     if (!q) return;
 
-    // 1 ponto por acerto
-    if (q.answer === selected) p.score += 1;
-
-    // marca que respondeu esta questão e guarda o tempo
+    if (q.answer === selected) p.score += 1; // 1 ponto por acerto
     p.answeredQuestions[questionId] = true;
     p.times[questionId] = timeTaken;
   });
@@ -71,21 +81,18 @@ io.on('connection', (socket) => {
     finishedCount++;
 
     if (finishedCount === Object.keys(participants).length) {
-
-      // calcula tempo total de cada participante
-      let totals = Object.entries(participants).map(([id, p]) => {
-        const totalTime = Object.values(p.times).reduce((a,b)=>a+b,0);
-        return { id, totalTime };
-      });
-
-      // participante que respondeu mais rápido no total ganha +2 pontos
-      totals.sort((a,b)=>a.totalTime-b.totalTime);
+      // calcula o mais rápido
+      const totals = Object.entries(participants).map(([id, p]) => ({
+        id,
+        totalTime: Object.values(p.times).reduce((a, b) => a + b, 0)
+      }));
+      totals.sort((a, b) => a.totalTime - b.totalTime);
       if (totals[0]) participants[totals[0].id].score += 2;
 
       // ranking final
       const ranking = Object.values(participants)
-        .sort((a,b)=>b.score-a.score)
-        .map(p=>({ name: p.name, score: p.score }));
+        .sort((a, b) => b.score - a.score)
+        .map(p => ({ name: p.name, score: p.score }));
 
       io.emit('updateScores', ranking);
     }
@@ -93,18 +100,21 @@ io.on('connection', (socket) => {
     io.emit('counts', { connected: Object.keys(participants).length, finished: finishedCount });
   });
 
-  // DESCONEXÃO
+  // DESCONECTOU
   socket.on('disconnect', () => {
     if (participants[socket.id]) delete participants[socket.id];
     io.emit('counts', { connected: Object.keys(participants).length, finished: finishedCount });
   });
-
 });
 
 // ----------------- ROTAS -----------------
-app.get('/', (req,res)=>res.sendFile(__dirname + '/participant.html'));
-app.get('/presenter', (req,res)=>res.sendFile(__dirname + '/presenter.html'));
+app.get('/', (req, res) => res.sendFile(__dirname + '/participant.html'));
+app.get('/presenter', (req, res) => res.sendFile(__dirname + '/presenter.html'));
 
 // ----------------- INICIAR SERVIDOR -----------------
 const PORT = 3000;
-server.listen(PORT, ()=>console.log(`Servidor rodando em http://localhost:${PORT}`));
+const localIP = getLocalIP();
+server.listen(PORT, () => {
+  console.log(`✅ Servidor rodando em: http://${localIP}:${PORT}`);
+  console.log('📱 Conecte os celulares a esta rede Wi-Fi e escaneie o QR Code gerado.');
+});
