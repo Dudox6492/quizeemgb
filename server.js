@@ -1,15 +1,15 @@
+// server.js — envia server-info automaticamente ao apresentador
 const express = require('express');
 const http = require('http');
-const os = require('os'); // 🔹 usado para pegar o IP local
+const os = require('os');
 const { Server } = require('socket.io');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// 🔹 Garante que todos os arquivos locais (HTML, JS, CSS, etc.) sejam servidos
 app.use(express.static(__dirname));
 
-// ----------------- FUNÇÃO PARA PEGAR IP LOCAL -----------------
+// pega IP local (primeiro IPv4 não-interno)
 function getLocalIP() {
   const nets = os.networkInterfaces();
   for (const name of Object.keys(nets)) {
@@ -19,10 +19,10 @@ function getLocalIP() {
       }
     }
   }
-  return 'localhost';
+  return '127.0.0.1';
 }
 
-// ----------------- QUESTÕES -----------------
+// ------- suas questões (mantive as mesmas) -------
 const questions = [
   { id: 1, question: "Qual dos elementos abaixo pertence ao grupo dos metais alcalinos?", options: ["Hidrogênio", "Sódio", "Carbono", "Oxigênio"], answer: 1 },
   { id: 2, question: "Qual elemento pertence à família dos halogênios?", options: ["Flúor", "Ferro", "Neônio", "Lítio"], answer: 0 },
@@ -36,24 +36,29 @@ const questions = [
   { id: 10, question: "Qual elemento pertence ao período 2 e é um não-metal?", options: ["Carbono", "Lítio", "Magnésio", "Cálcio"], answer: 0 }
 ];
 
-// ----------------- ESTADOS -----------------
+// estados
 let participants = {}; // { socketId: {name, score, answeredQuestions, times} }
 let finishedCount = 0;
 
-// ----------------- SOCKET.IO -----------------
+// socket.io
 io.on('connection', (socket) => {
-  // PARTICIPANTE ENTROU
+
+  // se o apresentador conectar, envia o IP local automaticamente
+  socket.on('presenter-join', () => {
+    const ip = getLocalIP();
+    const origin = `http://${ip}:3000`;
+    // envia um evento só para esse socket (apresentador)
+    socket.emit('server-info', { origin });
+    // também atualiza os contadores já que presenter entrou
+    io.emit('counts', { connected: Object.keys(participants).length, finished: finishedCount });
+  });
+
+  // participante entra (recebe { name })
   socket.on('participant-join', ({ name }) => {
     participants[socket.id] = { name, score: 0, answeredQuestions: {}, times: {} };
     io.emit('counts', { connected: Object.keys(participants).length, finished: finishedCount });
   });
 
-  // APRESENTADOR ENTROU
-  socket.on('presenter-join', () => {
-    io.emit('counts', { connected: Object.keys(participants).length, finished: finishedCount });
-  });
-
-  // INICIAR QUIZ
   socket.on('presenter-start-quiz', () => {
     finishedCount = 0;
     for (const p of Object.values(participants)) {
@@ -64,57 +69,48 @@ io.on('connection', (socket) => {
     io.emit('quiz-start', { questions });
   });
 
-  // RECEBER RESPOSTA
   socket.on('answer', ({ questionId, selected, timeTaken }) => {
     const p = participants[socket.id];
     if (!p || p.answeredQuestions[questionId]) return;
     const q = questions.find(q => q.id === questionId);
     if (!q) return;
-
-    if (q.answer === selected) p.score += 1; // 1 ponto por acerto
+    if (q.answer === selected) p.score += 1;
     p.answeredQuestions[questionId] = true;
     p.times[questionId] = timeTaken;
   });
 
-  // PARTICIPANTE TERMINOU
   socket.on('participant-finished', () => {
     finishedCount++;
-
     if (finishedCount === Object.keys(participants).length) {
-      // calcula o mais rápido
       const totals = Object.entries(participants).map(([id, p]) => ({
         id,
         totalTime: Object.values(p.times).reduce((a, b) => a + b, 0)
       }));
       totals.sort((a, b) => a.totalTime - b.totalTime);
       if (totals[0]) participants[totals[0].id].score += 2;
-
-      // ranking final
       const ranking = Object.values(participants)
         .sort((a, b) => b.score - a.score)
         .map(p => ({ name: p.name, score: p.score }));
-
       io.emit('updateScores', ranking);
     }
-
     io.emit('counts', { connected: Object.keys(participants).length, finished: finishedCount });
   });
 
-  // DESCONECTOU
   socket.on('disconnect', () => {
     if (participants[socket.id]) delete participants[socket.id];
     io.emit('counts', { connected: Object.keys(participants).length, finished: finishedCount });
   });
+
 });
 
-// ----------------- ROTAS -----------------
+// rotas
 app.get('/', (req, res) => res.sendFile(__dirname + '/participant.html'));
 app.get('/presenter', (req, res) => res.sendFile(__dirname + '/presenter.html'));
 
-// ----------------- INICIAR SERVIDOR -----------------
+// iniciar
 const PORT = 3000;
-const localIP = getLocalIP();
 server.listen(PORT, () => {
-  console.log(`✅ Servidor rodando em: http://${localIP}:${PORT}`);
-  console.log('📱 Conecte os celulares a esta rede Wi-Fi e escaneie o QR Code gerado.');
+  const ip = getLocalIP();
+  console.log(`Servidor rodando em http://${ip}:${PORT}`);
+  console.log('Acesse http://' + ip + ':' + PORT + '/presenter no navegador do apresentador');
 });
